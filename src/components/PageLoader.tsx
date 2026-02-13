@@ -1,0 +1,33 @@
+import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+
+interface PageLoaderProps {
+  className?: string;
+  fullScreen?: boolean;
+}
+
+export const PageLoader = ({ className, fullScreen = true }: PageLoaderProps) => {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    // Only show loader if loading takes more than 150ms to avoid flicker
+    const timer = setTimeout(() => setShow(true), 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!show) return null;
+
+  return (
+    <div className={cn(
+      "flex w-full items-center justify-center bg-background",
+      fullScreen ? "h-screen" : "h-full min-h-[200px]",
+      className
+    )}>
+      <div className="flex flex-col items-center gap-2">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm font-mono text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
+};
