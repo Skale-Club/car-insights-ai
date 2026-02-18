@@ -107,6 +107,27 @@ npm run preview          # Preview production build
 
 # Linting
 npm run lint             # Run ESLint
+
+# Ops
+npm run supabase:keepalive  # Update keepalive timestamp in Supabase
+```
+
+## Supabase Keepalive Cron
+
+This repository includes a GitHub Actions cron job at `.github/workflows/supabase-keepalive.yml`.
+
+- Schedule: daily at `03:11 UTC`
+- Behavior: updates `app_settings.setting_key = system.supabase_keepalive` with the latest UTC timestamp
+
+Required GitHub repository secrets:
+
+- `VITE_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+You can also run it manually:
+
+```bash
+npm run supabase:keepalive
 ```
 
 ## 🔐 Security

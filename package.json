@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "supabase:keepalive": "node scripts/supabase-keepalive.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
