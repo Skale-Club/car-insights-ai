@@ -9,8 +9,15 @@ import { useToast } from '@/hooks/use-toast';
 
 export function useCSVUpload(onComplete: (sessionId: string) => void, carProfileId?: string) {
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState('');
+  const [progressLabel, setProgressLabel] = useState('');
+  const [progressValue, setProgressValue] = useState(0);
   const { toast } = useToast();
+
+  const updateProgress = useCallback((value: number, label: string) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(value)));
+    setProgressValue((prev) => (clamped > prev ? clamped : prev));
+    setProgressLabel(label);
+  }, []);
 
   const upload = useCallback(async (file: File, customName?: string) => {
     if (!carProfileId) {
@@ -19,20 +26,22 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
     }
 
     setUploading(true);
+    setProgressValue(0);
+    setProgressLabel('');
     let sourceFilePath: string | null = null;
     let createdSessionId: string | null = null;
     try {
-      setProgress('Reading file...');
+      updateProgress(6, 'Reading file...');
       const text = await file.text();
 
-      setProgress('Parsing CSV...');
+      updateProgress(15, 'Parsing CSV...');
       const parsed = parseCSV(text);
       if (parsed.rows.length === 0) {
         toast({ title: 'Empty CSV', description: 'No data rows found.', variant: 'destructive' });
         return;
       }
 
-      setProgress('Computing insights...');
+      updateProgress(28, 'Computing insights...');
       const summaries = computeParameterSummaries(parsed);
       
       const flags = evaluateRules(parsed, DEFAULT_PRIUS_RULES);
@@ -82,7 +91,7 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
         }
       }
 
-      setProgress('Saving original CSV...');
+      updateProgress(42, 'Saving original CSV...');
       try {
         sourceFilePath = await uploadSessionCSV(file, carProfileId);
       } catch (storageError) {
@@ -90,7 +99,7 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
         console.warn('Storage upload unavailable, keeping CSV in database only:', storageError);
       }
 
-      setProgress('Saving session...');
+      updateProgress(55, 'Saving session...');
       const session = await createSession(
         carProfileId,
         customName || file.name,
@@ -104,7 +113,7 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
       );
       createdSessionId = session.id;
 
-      setProgress('Saving data rows (0%)...');
+      updateProgress(58, 'Saving data rows (0%)...');
       const dbRows = parsed.rows.map((row, idx) => {
         let t_seconds: number | null = null;
         let t_timestamp: string | null = null;
@@ -130,10 +139,11 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
       });
 
       await insertSessionRows(session.id, dbRows, (percent) => {
-        setProgress(`Saving data rows (${percent}%)...`);
+        const weightedProgress = 58 + (percent * 0.3);
+        updateProgress(weightedProgress, `Saving data rows (${percent}%)...`);
       });
 
-      setProgress('Saving flags...');
+      updateProgress(90, 'Saving flags...');
       await insertSessionFlags(session.id, flags.map(f => ({
         ...f,
         evidence: f.evidence as unknown as Record<string, unknown>,
@@ -141,7 +151,7 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
 
       // Optional: Analyze with Gemini if API key is configured
       try {
-        setProgress('Analyzing with AI...');
+        updateProgress(95, 'Analyzing with AI...');
         const { getGeminiApiKey, getGeminiModel, updateSessionWithGeminiAnalysis } = await import('@/lib/db');
         const { analyzeSession } = await import('@/lib/gemini-service');
 
@@ -178,6 +188,7 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
         console.warn('Gemini analysis failed:', aiError);
       }
 
+      updateProgress(100, 'Upload complete!');
       toast({ title: 'Upload complete!', description: `${parsed.rows.length} rows, ${flags.length} flags detected.` });
       onComplete(session.id);
     } catch (err) {
@@ -200,9 +211,10 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
       toast({ title: 'Upload failed', description: String(err), variant: 'destructive' });
     } finally {
       setUploading(false);
-      setProgress('');
+      setProgressLabel('');
+      setProgressValue(0);
     }
-  }, [onComplete, toast, carProfileId]);
+  }, [carProfileId, onComplete, toast, updateProgress]);
 
-  return { upload, uploading, progress };
+  return { upload, uploading, progressLabel, progressValue };
 }
