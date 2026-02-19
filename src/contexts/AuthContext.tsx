@@ -46,8 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
-    const redirectTo = `${window.location.origin}/auth/v1/callback`;
-    console.log('Google OAuth redirect URI:', redirectTo);
+    // Prefer a canonical app URL in production to avoid OAuth returning to preview domains.
+    const appUrl = import.meta.env.VITE_APP_URL?.replace(/\/$/, '');
+    const redirectTo = appUrl || window.location.origin;
     
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
