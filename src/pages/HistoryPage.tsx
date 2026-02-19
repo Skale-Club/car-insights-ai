@@ -17,12 +17,12 @@ import {
 import SessionKPIs from '@/components/SessionKPIs';
 import FlagsPanel from '@/components/FlagsPanel';
 import SessionCharts from '@/components/SessionCharts';
-import { getSessions, getSessionFlags, getSessionRows, deleteSession, updateSession } from '@/lib/db';
+import { getSessions, getSessionFlags, getSessionRows, deleteSession, updateSession, downloadSessionCSV } from '@/lib/db';
 import { DEFAULT_PRIUS_RULES } from '@/lib/default-rules';
 import { useCarsContext } from '@/contexts/CarsContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { PageLoader } from '@/components/PageLoader';
-import { AlertTriangle, AlertCircle, CheckCircle, ChevronRight, ChevronLeft, History as HistoryIcon, Car, ArrowRight, Trash2, Pencil, Check, X } from 'lucide-react';
+import { AlertTriangle, AlertCircle, CheckCircle, ChevronRight, ChevronLeft, History as HistoryIcon, Car, ArrowRight, Trash2, Pencil, Check, X, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function HistoryPage() {
@@ -45,6 +45,7 @@ export default function HistoryPage() {
   // Editing state
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState('');
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
 
   // Reset editing when session changes
   useEffect(() => {
@@ -67,6 +68,18 @@ export default function HistoryPage() {
     } catch (error) {
       console.error('Failed to rename session:', error);
       toast.error('Failed to rename session');
+    }
+  };
+
+  const handleDownloadSessionCsv = async (session: any) => {
+    setDownloadingCsv(true);
+    try {
+      await downloadSessionCSV(session.source_file_path, session.source_filename, session.source_csv, session.id);
+    } catch (error) {
+      console.error('Failed to download CSV:', error);
+      toast.error('Failed to download CSV');
+    } finally {
+      setDownloadingCsv(false);
     }
   };
 
@@ -198,14 +211,30 @@ export default function HistoryPage() {
                   </div>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate(`/session/${displayedSession.id}`)}
-                className="text-xs text-primary hover:text-primary"
-              >
-                Full Analysis <ArrowRight className="w-3 h-3 ml-1" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => handleDownloadSessionCsv(displayedSession)}
+                  disabled={downloadingCsv}
+                >
+                  {downloadingCsv ? (
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  ) : (
+                    <Download className="w-3 h-3 mr-1" />
+                  )}
+                  Download CSV
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(`/session/${displayedSession.id}`)}
+                  className="text-xs text-primary hover:text-primary"
+                >
+                  Full Analysis <ArrowRight className="w-3 h-3 ml-1" />
+                </Button>
+              </div>
             </div>
 
             <div className="mb-4">

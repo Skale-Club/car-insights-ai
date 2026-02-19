@@ -1,10 +1,9 @@
 import { useState, useCallback } from 'react';
-import { parseCSV, ParsedCSV } from '@/lib/csv-parser';
-import { computeParameterSummaries, evaluateRules, SessionFlag } from '@/lib/insight-engine';
+import { parseCSV } from '@/lib/csv-parser';
+import { computeParameterSummaries, evaluateRules } from '@/lib/insight-engine';
 import { DEFAULT_PRIUS_RULES } from '@/lib/default-rules';
 import {
-  getGeminiModel,
-  createSession, insertSessionRows, insertSessionFlags
+  createSession, insertSessionRows, insertSessionFlags, uploadSessionCSV, removeSessionCSV, deleteSession
 } from '@/lib/db';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,6 +19,8 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
     }
 
     setUploading(true);
+    let sourceFilePath: string | null = null;
+    let createdSessionId: string | null = null;
     try {
       setProgress('Reading file...');
       const text = await file.text();
@@ -81,6 +82,14 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
         }
       }
 
+      setProgress('Saving original CSV...');
+      try {
+        sourceFilePath = await uploadSessionCSV(file, carProfileId);
+      } catch (storageError) {
+        sourceFilePath = null;
+        console.warn('Storage upload unavailable, keeping CSV in database only:', storageError);
+      }
+
       setProgress('Saving session...');
       const session = await createSession(
         carProfileId,
@@ -90,7 +99,10 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
         { summaries, headerMapping: parsed.headerMapping, timeColumn: parsed.timeColumn },
         durationSeconds,
         sessionStart,
+        sourceFilePath,
+        text,
       );
+      createdSessionId = session.id;
 
       setProgress('Saving data rows (0%)...');
       const dbRows = parsed.rows.map((row, idx) => {
@@ -170,6 +182,21 @@ export function useCSVUpload(onComplete: (sessionId: string) => void, carProfile
       onComplete(session.id);
     } catch (err) {
       console.error(err);
+
+      if (createdSessionId) {
+        try {
+          await deleteSession(createdSessionId);
+        } catch (cleanupError) {
+          console.warn('Failed to rollback failed session upload:', cleanupError);
+        }
+      } else if (sourceFilePath) {
+        try {
+          await removeSessionCSV(sourceFilePath);
+        } catch (cleanupError) {
+          console.warn('Failed to cleanup CSV after upload error:', cleanupError);
+        }
+      }
+
       toast({ title: 'Upload failed', description: String(err), variant: 'destructive' });
     } finally {
       setUploading(false);

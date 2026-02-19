@@ -236,6 +236,8 @@ export type Database = {
           row_count: number
           session_end: string | null
           session_start: string | null
+          source_csv: string | null
+          source_file_path: string | null
           source_filename: string
           summary: Json | null
           uploaded_at: string
@@ -251,6 +253,8 @@ export type Database = {
           row_count?: number
           session_end?: string | null
           session_start?: string | null
+          source_csv?: string | null
+          source_file_path?: string | null
           source_filename: string
           summary?: Json | null
           uploaded_at?: string
@@ -266,6 +270,8 @@ export type Database = {
           row_count?: number
           session_end?: string | null
           session_start?: string | null
+          source_csv?: string | null
+          source_file_path?: string | null
           source_filename?: string
           summary?: Json | null
           uploaded_at?: string

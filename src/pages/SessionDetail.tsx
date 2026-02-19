@@ -5,12 +5,10 @@ import SessionKPIs from '@/components/SessionKPIs';
 import FlagsPanel from '@/components/FlagsPanel';
 import SessionCharts from '@/components/SessionCharts';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { getSession, getSessionFlags, getSessionRows, deleteSessionFlags, insertSessionFlags } from '@/lib/db';
-import { parseCSV } from '@/lib/csv-parser';
+import { getSession, getSessionFlags, getSessionRows, deleteSessionFlags, insertSessionFlags, downloadSessionCSV } from '@/lib/db';
 import { evaluateRules } from '@/lib/insight-engine';
 import { DEFAULT_PRIUS_RULES } from '@/lib/default-rules';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Download, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 import { PageLoader } from '@/components/PageLoader';
@@ -25,6 +23,7 @@ export default function SessionDetail() {
   const [flags, setFlags] = useState<any[]>([]);
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -78,6 +77,23 @@ export default function SessionDetail() {
     toast({ title: 'Re-evaluated', description: `${newFlags.length} flags after re-computation.` });
   }, [id, session, rows, toast]);
 
+  const handleDownloadCsv = useCallback(async () => {
+    if (!session?.source_file_path && !session?.source_csv) {
+      toast({ title: 'CSV unavailable', description: 'This session has no stored CSV file.', variant: 'destructive' });
+      return;
+    }
+
+    setDownloadingCsv(true);
+    try {
+      await downloadSessionCSV(session.source_file_path, session.source_filename, session.source_csv, session.id);
+    } catch (error) {
+      console.error('Failed to download CSV:', error);
+      toast({ title: 'Download failed', description: 'Could not download the CSV file.', variant: 'destructive' });
+    } finally {
+      setDownloadingCsv(false);
+    }
+  }, [session, toast]);
+
   if (loading) {
     return (
       <AppLayout>
@@ -116,9 +132,21 @@ export default function SessionDetail() {
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={handleRecompute} className="text-xs">
-            <RefreshCw className="w-3 h-3 mr-1" /> Re-evaluate
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadCsv}
+              className="text-xs"
+              disabled={downloadingCsv || (!session.source_file_path && !session.source_csv)}
+            >
+              {downloadingCsv ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Download className="w-3 h-3 mr-1" />}
+              Download CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleRecompute} className="text-xs">
+              <RefreshCw className="w-3 h-3 mr-1" /> Re-evaluate
+            </Button>
+          </div>
         </div>
 
         <SessionKPIs

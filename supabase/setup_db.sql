@@ -27,6 +27,8 @@ CREATE TABLE public.sessions (
   car_profile_id UUID REFERENCES public.car_profiles(id) ON DELETE CASCADE,
   uploaded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   source_filename TEXT NOT NULL,
+  source_csv TEXT,
+  source_file_path TEXT,
   session_start TIMESTAMP WITH TIME ZONE,
   session_end TIMESTAMP WITH TIME ZONE,
   duration_seconds INTEGER,
@@ -125,6 +127,17 @@ CREATE TRIGGER update_app_settings_updated_at
   BEFORE UPDATE ON public.app_settings 
   FOR EACH ROW 
   EXECUTE FUNCTION update_updated_at_column();
+
+-- Session CSV storage bucket (private)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'session-csv',
+  'session-csv',
+  false,
+  52428800,
+  ARRAY['text/csv', 'application/vnd.ms-excel']
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- 4. HELPER FUNCTIONS
 

@@ -1,5 +1,20 @@
 import { supabase } from '@/integrations/supabase/client';
 
+const SESSION_CSV_BUCKET = 'session-csv';
+const SESSION_LIST_SELECT =
+  'id, car_profile_id, uploaded_at, source_filename, source_file_path, session_start, session_end, duration_seconds, row_count, columns, summary, created_at, user_id, gemini_analysis';
+
+function sanitizeFileName(filename: string): string {
+  return filename
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 120);
+}
+
+function ensureCsvExtension(filename: string): string {
+  return filename.toLowerCase().endsWith('.csv') ? filename : `${filename}.csv`;
+}
+
 export async function getDefaultCarProfile() {
   const { data } = await supabase.from('car_profiles').select('*').limit(1).maybeSingle();
   if (data) return data;
@@ -14,7 +29,7 @@ export async function getDefaultCarProfile() {
 export async function getSessions(carProfileId?: string) {
   let query = supabase
     .from('sessions')
-    .select('*')
+    .select(SESSION_LIST_SELECT)
     .order('uploaded_at', { ascending: false });
   
   if (carProfileId) {
@@ -64,12 +79,30 @@ export async function getSessionRows(sessionId: string) {
 }
 
 export async function deleteSession(sessionId: string) {
+  const { data: session, error: sessionReadError } = await supabase
+    .from('sessions')
+    .select('source_file_path')
+    .eq('id', sessionId)
+    .maybeSingle();
+
+  if (sessionReadError) throw sessionReadError;
+
   const { error } = await supabase
     .from('sessions')
     .delete()
     .eq('id', sessionId);
   
   if (error) throw error;
+
+  if (session?.source_file_path) {
+    const { error: storageError } = await supabase.storage
+      .from(SESSION_CSV_BUCKET)
+      .remove([session.source_file_path]);
+
+    if (storageError) {
+      console.warn('Failed to remove session CSV from storage:', storageError.message);
+    }
+  }
 }
 
 export async function updateSession(sessionId: string, updates: Record<string, any>) {
@@ -89,6 +122,8 @@ export async function createSession(
   summary: Record<string, unknown>,
   durationSeconds?: number,
   sessionStart?: string | null,
+  sourceFilePath?: string | null,
+  sourceCsv?: string | null,
 ) {
   const { data } = await supabase
     .from('sessions')
@@ -100,10 +135,101 @@ export async function createSession(
       summary: summary as unknown as never,
       duration_seconds: durationSeconds || null,
       session_start: sessionStart || null,
+      source_file_path: sourceFilePath || null,
+      source_csv: sourceCsv || null,
     })
     .select()
     .single();
   return data!;
+}
+
+export async function uploadSessionCSV(file: File, carProfileId: string): Promise<string> {
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  const safeName = sanitizeFileName(file.name || 'session.csv');
+  const path = `${user.id}/${carProfileId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+
+  const { error } = await supabase.storage
+    .from(SESSION_CSV_BUCKET)
+    .upload(path, file, {
+      contentType: 'text/csv',
+      upsert: false,
+    });
+
+  if (error) {
+    throw new Error(`Failed to upload CSV file: ${error.message}`);
+  }
+
+  return path;
+}
+
+export async function removeSessionCSV(filePath: string): Promise<void> {
+  const { error } = await supabase.storage
+    .from(SESSION_CSV_BUCKET)
+    .remove([filePath]);
+
+  if (error) {
+    throw new Error(`Failed to remove CSV file: ${error.message}`);
+  }
+}
+
+function triggerCsvDownload(blob: Blob, filename: string): void {
+  const objectUrl = window.URL.createObjectURL(blob);
+  try {
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = ensureCsvExtension(filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    window.URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export async function downloadSessionCSV(
+  filePath: string | null | undefined,
+  filename: string,
+  sourceCsv?: string | null,
+  sessionId?: string,
+): Promise<void> {
+  if (filePath) {
+    const { data, error } = await supabase.storage
+      .from(SESSION_CSV_BUCKET)
+      .download(filePath);
+
+    if (!error && data) {
+      triggerCsvDownload(data, filename);
+      return;
+    }
+  }
+
+  if (sourceCsv && sourceCsv.length > 0) {
+    triggerCsvDownload(new Blob([sourceCsv], { type: 'text/csv;charset=utf-8' }), filename);
+    return;
+  }
+
+  if (sessionId) {
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('source_csv')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to fetch stored CSV: ${error.message}`);
+    }
+
+    if (data?.source_csv) {
+      triggerCsvDownload(new Blob([data.source_csv], { type: 'text/csv;charset=utf-8' }), filename);
+      return;
+    }
+  }
+
+  throw new Error('No stored CSV available for this session');
 }
 
 export async function insertSessionRows(
