@@ -9,6 +9,7 @@ import { CarsProvider } from "@/contexts/CarsContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import PrivateRoute from "@/components/PrivateRoute";
 import { PageLoader } from "@/components/PageLoader";
+import { Analytics } from "@vercel/analytics/react";
 
 // Lazy imports
 const Index = lazy(() => import("./pages/Index"));
@@ -65,6 +66,7 @@ const App = () => (
               <Route path="*" element={<PublicLayout><NotFound /></PublicLayout>} />
             </Routes>
           </BrowserRouter>
+          <Analytics />
         </SettingsProvider>
       </AuthProvider>
     </TooltipProvider>
