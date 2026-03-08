@@ -20,8 +20,8 @@ export const PageLoader = ({ className, fullScreen = true }: PageLoaderProps) =>
 
   return (
     <div className={cn(
-      "flex w-full items-center justify-center bg-background",
-      fullScreen ? "h-screen" : "h-full min-h-[200px]",
+      "flex items-center justify-center bg-background",
+      fullScreen ? "fixed inset-0 z-50" : "w-full h-full min-h-[200px]",
       className
     )}>
       <div className="flex flex-col items-center gap-2">
