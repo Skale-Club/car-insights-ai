@@ -2,12 +2,15 @@ name: Supabase Keepalive
 
 on:
   schedule:
-    - cron: "11 3 * * *"
+    # Run every 6 hours to ensure activity is registered even if some runs fail
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 jobs:
   keepalive:
     runs-on: ubuntu-latest
+    # Add timeout to prevent stuck workflows
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -22,8 +25,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Update daily keepalive timestamp in Supabase
+      - name: Update keepalive timestamp in Supabase
+        id: keepalive
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run supabase:keepalive
+        # Retry logic is built into the script
+
+      - name: Verify keepalive was successful
+        if: success()
+        run: echo "✅ Keepalive completed successfully at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "❌ Keepalive failed!"
+          exit 1

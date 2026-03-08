@@ -13,6 +13,26 @@ const sanitizeEnvValue = (value) => {
   return trimmed;
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const retryWithBackoff = async (fn, maxRetries = 3, baseDelayMs = 1000) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      console.warn(`Attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+      if (attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        console.log(`Retrying in ${delay}ms...`);
+        await sleep(delay);
+      }
+    }
+  }
+  throw lastError;
+};
+
 const supabaseUrl = sanitizeEnvValue(
   process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL,
 );
@@ -33,25 +53,62 @@ const now = new Date();
 const heartbeatPayload = {
   updated_at_utc: now.toISOString(),
   hour_utc: now.getUTCHours(),
+  date_utc: now.toISOString().split("T")[0],
   source: "github-actions-cron",
+  version: "2.0",
 };
 
-const { error } = await supabase.from("app_settings").upsert(
-  [
-    {
-      setting_key: "system.supabase_keepalive",
-      setting_value: JSON.stringify(heartbeatPayload),
-      encrypted: false,
-    },
-  ],
-  { onConflict: "setting_key" },
-);
+console.log(`Starting Supabase keepalive at ${now.toISOString()}`);
+console.log(`Target: ${supabaseUrl}`);
 
-if (error) {
-  console.error("Failed to write keepalive heartbeat:", error.message);
-  process.exit(1);
-}
+// Execute multiple operations to ensure activity is registered
+await retryWithBackoff(async () => {
+  // Operation 1: Write heartbeat to app_settings
+  const { error: upsertError } = await supabase.from("app_settings").upsert(
+    [
+      {
+        setting_key: "system.supabase_keepalive",
+        setting_value: JSON.stringify(heartbeatPayload),
+        encrypted: false,
+      },
+    ],
+    { onConflict: "setting_key" },
+  );
 
-console.log(
-  `Supabase keepalive heartbeat updated at ${heartbeatPayload.updated_at_utc}`,
-);
+  if (upsertError) {
+    throw new Error(`Upsert failed: ${upsertError.message}`);
+  }
+  console.log("✓ Heartbeat written to app_settings");
+}, 3);
+
+await retryWithBackoff(async () => {
+  // Operation 2: Read back the setting (ensures read activity)
+  const { data, error: readError } = await supabase
+    .from("app_settings")
+    .select("setting_key, setting_value, updated_at")
+    .eq("setting_key", "system.supabase_keepalive")
+    .single();
+
+  if (readError) {
+    throw new Error(`Read failed: ${readError.message}`);
+  }
+  console.log("✓ Heartbeat verified:", data?.updated_at);
+}, 3);
+
+await retryWithBackoff(async () => {
+  // Operation 3: Query sessions table to generate more database activity
+  const { count, error: countError } = await supabase
+    .from("sessions")
+    .select("*", { count: "exact", head: true });
+
+  if (countError) {
+    throw new Error(`Session count failed: ${countError.message}`);
+  }
+  console.log(`✓ Sessions table queried (${count} rows)`);
+}, 3);
+
+console.log("");
+console.log("=".repeat(50));
+console.log(`✅ Supabase keepalive completed successfully!`);
+console.log(`   Timestamp: ${heartbeatPayload.updated_at_utc}`);
+console.log("=".repeat(50));
