@@ -294,6 +294,83 @@ export type Database = {
           },
         ]
       }
+      chat_conversations: {
+        Row: {
+          id: string
+          title: string
+          user_id: string | null
+          car_profile_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          title?: string
+          user_id?: string | null
+          car_profile_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          user_id?: string | null
+          car_profile_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_conversations_car_profile_id_fkey"
+            columns: ["car_profile_id"]
+            isOneToOne: false
+            referencedRelation: "car_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_messages: {
+        Row: {
+          id: string
+          conversation_id: string
+          role: string
+          parts: Json
+          attachments: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: string
+          role: string
+          parts?: Json
+          attachments?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          conversation_id?: string
+          role?: string
+          parts?: Json
+          attachments?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
